@@ -1,0 +1,501 @@
+# terminal_log.txt - Bài 5 (Session 10): Docker Compose & .env
+# Chạy thật trên Windows 11, Docker Desktop, Docker Compose v5.5.0, Git Bash
+# Thư mục làm việc: compose-stack (tên project = compose-stack)
+
+$ docker compose version
+Docker Compose version v5.5.0
+
+$ cat docker-compose.yml
+# Docker Compose v2 - cụm Backend Web API + PostgreSQL (đóng gói từ bài 4)
+# Giá trị ${...} được Compose nội suy từ tệp .env cùng thư mục.
+
+services:
+  # Dịch vụ cơ sở dữ liệu
+  database:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      # Named volume giữ dữ liệu khi container bị xóa
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend-net
+    # Kiểm tra DB đã sẵn sàng nhận kết nối chưa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Dịch vụ Backend Web API (build từ ./backend)
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      # Cổng host lấy từ .env, cổng container cố định 8080
+      - "${PORT}:8080"
+    environment:
+      DB_HOST: database
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    # Dạng dài: chờ database healthy rồi mới khởi động backend
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - backend-net
+
+# Volume và network khai báo ở cấp root, Compose tự tạo khi up
+volumes:
+  pgdata:
+
+networks:
+  backend-net:
+
+$ cat .env.example
+# Tệp mẫu biến môi trường. Sao chép thành .env rồi điền giá trị thật:
+#   cp .env.example .env
+# Tệp .env KHÔNG được commit (đã chặn trong .gitignore).
+
+# Tên database PostgreSQL sẽ được tạo
+DB_NAME=your_db_name
+# Tên người dùng PostgreSQL
+DB_USER=your_db_user
+# Mật khẩu PostgreSQL (đặt mật khẩu mạnh)
+DB_PASSWORD=change_me
+# Cổng PostgreSQL trong mạng nội bộ compose
+DB_PORT=5432
+# Cổng host mở cho Backend Web API
+PORT=8085
+
+$ cat .gitignore
+# Tệp biến môi trường thật chứa bí mật: không đưa lên Git
+.env
+
+# Tệp log
+*.log
+
+$ docker compose config
+name: compose-stack
+services:
+  backend:
+    build:
+      context: D:\Rikkei\DevOps\Session10\_demo\bai5\compose-stack\backend
+      dockerfile: Dockerfile
+    depends_on:
+      database:
+        condition: service_healthy
+        required: true
+    environment:
+      DB_HOST: database
+      DB_NAME: appdb
+      DB_PASSWORD: AppUser_2026
+      DB_PORT: "5432"
+      DB_USER: appuser
+    networks:
+      backend-net: null
+    ports:
+      - mode: ingress
+        target: 8080
+        published: "8085"
+        protocol: tcp
+    restart: unless-stopped
+  database:
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_PASSWORD: AppUser_2026
+      POSTGRES_USER: appuser
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U appuser -d appdb
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    image: postgres:15-alpine
+    networks:
+      backend-net: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: pgdata
+        target: /var/lib/postgresql/data
+        volume: {}
+networks:
+  backend-net:
+    name: compose-stack_backend-net
+volumes:
+  pgdata:
+    name: compose-stack_pgdata
+
+--- thieu .env
+$ mv .env .env.bak
+
+$ docker compose config 2>&1 | head -20
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_PASSWORD\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_PORT\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"DB_USER\" variable is not set. Defaulting to a blank string."
+time="2026-10-12T04:10:03+07:00" level=warning msg="The \"PORT\" variable is not set. Defaulting to a blank string."
+name: compose-stack
+services:
+  backend:
+    build:
+      context: D:\Rikkei\DevOps\Session10\_demo\bai5\compose-stack\backend
+      dockerfile: Dockerfile
+    depends_on:
+      database:
+        condition: service_healthy
+        required: true
+
+$ mv .env.bak .env
+
+$ ls -a
+.
+..
+.env
+.env.example
+.gitignore
+backend
+docker-compose.yml
+
+$ docker compose --progress plain up -d --build
+ Image compose-stack-backend Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 601B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 480B 0.0s done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.12-alpine
+#3 DONE 4.4s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 3.91kB done
+#5 DONE 0.1s
+
+#6 [1/4] FROM docker.io/library/python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+#6 resolve docker.io/library/python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4 0.0s done
+#6 extracting sha256:bce3d672089f7ccc5125c3f8f95542fa3971138f323fb7f77e338a14396c85aa
+#6 extracting sha256:bce3d672089f7ccc5125c3f8f95542fa3971138f323fb7f77e338a14396c85aa 0.1s done
+#6 DONE 2.6s
+
+#6 [1/4] FROM docker.io/library/python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+#6 extracting sha256:283ac05c32e67060aa59f8a841b02df4cc0bd7fbf8d880f67d9b622e1cbd1935
+#6 extracting sha256:283ac05c32e67060aa59f8a841b02df4cc0bd7fbf8d880f67d9b622e1cbd1935 0.9s done
+#6 DONE 3.5s
+
+#6 [1/4] FROM docker.io/library/python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+#6 extracting sha256:e203d50c86bd38d307585d33fd69e7e7fd91e7535b65af46aa1d663cfb80c0fa 0.0s done
+#6 DONE 3.5s
+
+#7 [2/4] WORKDIR /app
+#7 DONE 0.3s
+
+#8 [3/4] RUN pip install --no-cache-dir pg8000==1.31.2
+#8 2.651 Collecting pg8000==1.31.2
+#8 2.931   Downloading pg8000-1.31.2-py3-none-any.whl.metadata (74 kB)
+#8 3.080 Collecting python-dateutil>=2.8.2 (from pg8000==1.31.2)
+#8 3.151   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+#8 3.220 Collecting scramp>=1.4.5 (from pg8000==1.31.2)
+#8 3.283   Downloading scramp-1.4.17-py3-none-any.whl.metadata (22 kB)
+#8 3.361 Collecting six>=1.5 (from python-dateutil>=2.8.2->pg8000==1.31.2)
+#8 3.426   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+#8 3.497 Collecting asn1crypto>=1.5.1 (from scramp>=1.4.5->pg8000==1.31.2)
+#8 3.561   Downloading asn1crypto-1.5.1-py2.py3-none-any.whl.metadata (13 kB)
+#8 3.630 Downloading pg8000-1.31.2-py3-none-any.whl (54 kB)
+#8 3.704 Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+#8 3.850 Downloading scramp-1.4.17-py3-none-any.whl (16 kB)
+#8 3.917 Downloading asn1crypto-1.5.1-py2.py3-none-any.whl (105 kB)
+#8 3.988 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+#8 4.014 Installing collected packages: asn1crypto, six, scramp, python-dateutil, pg8000
+#8 4.320 Successfully installed asn1crypto-1.5.1 pg8000-1.31.2 python-dateutil-2.9.0.post0 scramp-1.4.17 six-1.17.0
+#8 4.321 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#8 4.575 
+#8 4.575 [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+#8 4.575 [notice] To update, run: pip install --upgrade pip
+#8 DONE 4.7s
+
+#9 [4/4] COPY app.py .
+#9 DONE 0.0s
+
+#10 exporting to image
+#10 exporting layers
+#10 exporting layers 0.5s done
+#10 exporting manifest sha256:4e73c192bb75070ace437b70d278a56465140d3527771dfb57ae5855eafa7e85 0.0s done
+#10 exporting config sha256:fc14b78e1d5332be716d75ac6587eded4ad51e5c12e6764f900012065abf8f3d 0.0s done
+#10 exporting attestation manifest sha256:5eb2ab19f1c5a05513e5026dfcc084402c115934815a009f42c739c6a4c80f50 0.0s done
+#10 exporting manifest list sha256:ff5ad385f50459431c117572e1e936de99314155e5efd8ee2250e3cef22f2ee3 0.0s done
+#10 naming to docker.io/library/compose-stack-backend:latest done
+#10 unpacking to docker.io/library/compose-stack-backend:latest
+#10 unpacking to docker.io/library/compose-stack-backend:latest 0.2s done
+#10 DONE 0.8s
+
+#11 resolving provenance for metadata file
+#11 DONE 0.0s
+ Image compose-stack-backend Built 
+ Volume compose-stack_pgdata Creating 
+ Network compose-stack_backend-net Creating 
+ Volume compose-stack_pgdata Creating 
+ Network compose-stack_backend-net Creating 
+ Volume compose-stack_pgdata Created 
+ Volume compose-stack_pgdata Created 
+ Network compose-stack_backend-net Created 
+ Network compose-stack_backend-net Created 
+ Container compose-stack-database-1 Creating 
+ Container compose-stack-database-1 Created 
+ Container compose-stack-backend-1 Creating 
+ Container compose-stack-backend-1 Created 
+ Container compose-stack-database-1 Starting 
+ Container compose-stack-database-1 Started 
+ Container compose-stack-database-1 Waiting 
+ Container compose-stack-database-1 Healthy 
+ Container compose-stack-backend-1 Starting 
+ Container compose-stack-backend-1 Started 
+
+$ docker compose ps
+NAME                       IMAGE                   COMMAND                  SERVICE    CREATED         STATUS                   PORTS
+compose-stack-backend-1    compose-stack-backend   "python app.py"          backend    7 seconds ago   Up Less than a second    0.0.0.0:8085->8080/tcp, [::]:8085->8080/tcp
+compose-stack-database-1   postgres:15-alpine      "docker-entrypoint.s..."   database   7 seconds ago   Up 6 seconds (healthy)   5432/tcp
+
+$ docker compose ps --format json | head -c 600
+{"Command":"\"python app.py\"","CreatedAt":"2026-10-12 04:10:30 +0700 +07","Engine":"","ExitCode":0,"Health":"","ID":"5aa67dfe001d","Image":"compose-stack-backend","Labels":"com.docker.compose.oneoff=False,com.docker.compose.project.working_dir=D:\\Rikkei\\DevOps\\Session10\\_demo\\bai5\\compose-stack,com.docker.compose.version=5.5.0,desktop.docker.io/ports.scheme=v2,com.docker.compose.container-number=1,com.docker.compose.depends_on=database:service_healthy:false,com.docker.compose.image=sha256:4e73c192bb75070ace437b70d278a56465140d3527771dfb57ae5855eafa7e85,com.docker.compose.project=compose
+$ docker network ls --filter name=compose-stack
+NETWORK ID     NAME                        DRIVER    SCOPE
+5187c378c50e   compose-stack_backend-net   bridge    local
+
+$ docker volume ls --filter name=compose-stack
+DRIVER    VOLUME NAME
+local     compose-stack_pgdata
+
+$ docker compose images
+CONTAINER                  REPOSITORY              TAG                 PLATFORM            IMAGE ID            SIZE                CREATED
+compose-stack-backend-1    compose-stack-backend   latest              linux/amd64         ff5ad385f504        24.8MB              10 seconds ago
+compose-stack-database-1   postgres                15-alpine           linux/amd64         f7d23353e1b1        115MB               3 weeks ago
+
+$ docker compose logs --tail=30
+database-1  | 
+database-1  | waiting for server to start....2026-10-11 21:10:32.060 UTC [41] LOG:  starting PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+database-1  | 2026-10-11 21:10:32.062 UTC [41] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+database-1  | 2026-10-11 21:10:32.068 UTC [44] LOG:  database system was shut down at 2026-10-11 21:10:31 UTC
+database-1  | 2026-10-11 21:10:32.073 UTC [41] LOG:  database system is ready to accept connections
+database-1  |  done
+database-1  | server started
+database-1  | CREATE DATABASE
+database-1  | 
+database-1  | 
+database-1  | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+database-1  | 
+database-1  | waiting for server to shut down....2026-10-11 21:10:32.203 UTC [41] LOG:  received fast shutdown request
+database-1  | 2026-10-11 21:10:32.205 UTC [41] LOG:  aborting any active transactions
+database-1  | 2026-10-11 21:10:32.207 UTC [41] LOG:  background worker "logical replication launcher" (PID 47) exited with exit code 1
+database-1  | 2026-10-11 21:10:32.208 UTC [42] LOG:  shutting down
+database-1  | 2026-10-11 21:10:32.209 UTC [42] LOG:  checkpoint starting: shutdown immediate
+database-1  | 2026-10-11 21:10:32.319 UTC [42] LOG:  checkpoint complete: wrote 922 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.014 s, sync=0.091 s, total=0.112 s; sync files=301, longest=0.004 s, average=0.001 s; distance=4249 kB, estimate=4249 kB
+database-1  | 2026-10-11 21:10:32.325 UTC [41] LOG:  database system is shut down
+database-1  |  done
+database-1  | server stopped
+database-1  | 
+database-1  | PostgreSQL init process complete; ready for start up.
+database-1  | 
+database-1  | 2026-10-11 21:10:32.428 UTC [1] LOG:  starting PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+database-1  | 2026-10-11 21:10:32.428 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+database-1  | 2026-10-11 21:10:32.428 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+database-1  | 2026-10-11 21:10:32.433 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+database-1  | 2026-10-11 21:10:32.440 UTC [57] LOG:  database system was shut down at 2026-10-11 21:10:32 UTC
+database-1  | 2026-10-11 21:10:32.447 UTC [1] LOG:  database system is ready to accept connections
+backend-1   | Backend lang nghe tai 0.0.0.0:8080 (DB database:5432/appdb)
+
+$ timeout 8 docker compose logs -f
+backend-1  | Backend lang nghe tai 0.0.0.0:8080 (DB database:5432/appdb)
+database-1  | The files belonging to this database system will be owned by user "postgres".
+database-1  | This user must also own the server process.
+database-1  | 
+database-1  | The database cluster will be initialized with locale "en_US.utf8".
+database-1  | The default database encoding has accordingly been set to "UTF8".
+database-1  | The default text search configuration will be set to "english".
+database-1  | 
+database-1  | Data page checksums are disabled.
+database-1  | 
+database-1  | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+database-1  | creating subdirectories ... ok
+database-1  | selecting dynamic shared memory implementation ... posix
+database-1  | selecting default max_connections ... 100
+database-1  | selecting default shared_buffers ... 128MB
+database-1  | selecting default time zone ... UTC
+database-1  | creating configuration files ... ok
+database-1  | running bootstrap script ... ok
+database-1  | sh: locale: not found
+database-1  | 2026-10-11 21:10:31.299 UTC [35] WARNING:  no usable system locales were found
+database-1  | performing post-bootstrap initialization ... ok
+database-1  | initdb: warning: enabling "trust" authentication for local connections
+database-1  | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+database-1  | syncing data to disk ... ok
+database-1  | 
+database-1  | 
+database-1  | Success. You can now start the database server using:
+database-1  | 
+database-1  |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+database-1  | 
+database-1  | waiting for server to start....2026-10-11 21:10:32.060 UTC [41] LOG:  starting PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+database-1  | 2026-10-11 21:10:32.062 UTC [41] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+database-1  | 2026-10-11 21:10:32.068 UTC [44] LOG:  database system was shut down at 2026-10-11 21:10:31 UTC
+database-1  | 2026-10-11 21:10:32.073 UTC [41] LOG:  database system is ready to accept connections
+database-1  |  done
+database-1  | server started
+database-1  | CREATE DATABASE
+database-1  | 
+database-1  | 
+database-1  | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+database-1  | 
+database-1  | waiting for server to shut down....2026-10-11 21:10:32.203 UTC [41] LOG:  received fast shutdown request
+database-1  | 2026-10-11 21:10:32.205 UTC [41] LOG:  aborting any active transactions
+database-1  | 2026-10-11 21:10:32.207 UTC [41] LOG:  background worker "logical replication launcher" (PID 47) exited with exit code 1
+database-1  | 2026-10-11 21:10:32.208 UTC [42] LOG:  shutting down
+database-1  | 2026-10-11 21:10:32.209 UTC [42] LOG:  checkpoint starting: shutdown immediate
+database-1  | 2026-10-11 21:10:32.319 UTC [42] LOG:  checkpoint complete: wrote 922 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.014 s, sync=0.091 s, total=0.112 s; sync files=301, longest=0.004 s, average=0.001 s; distance=4249 kB, estimate=4249 kB
+database-1  | 2026-10-11 21:10:32.325 UTC [41] LOG:  database system is shut down
+database-1  |  done
+database-1  | server stopped
+database-1  | 
+database-1  | PostgreSQL init process complete; ready for start up.
+database-1  | 
+database-1  | 2026-10-11 21:10:32.428 UTC [1] LOG:  starting PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+database-1  | 2026-10-11 21:10:32.428 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+database-1  | 2026-10-11 21:10:32.428 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+database-1  | 2026-10-11 21:10:32.433 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+database-1  | 2026-10-11 21:10:32.440 UTC [57] LOG:  database system was shut down at 2026-10-11 21:10:32 UTC
+database-1  | 2026-10-11 21:10:32.447 UTC [1] LOG:  database system is ready to accept connections
+
+(ghi chú: timeout 8 tự dừng lệnh sau 8 giây; khi gõ tay thì dừng -f bằng Ctrl+C)
+$ curl -s http://localhost:8085/health
+{"status": "UP", "db_host": "database", "db": "connected"}
+$ curl -s -X POST -H 'Content-Type: application/json' -d '{"content":"Ghi chu dau tien"}' -w ' [HTTP %{http_code}]' http://localhost:8085/notes
+{"id": 1, "content": "Ghi chu dau tien"} [HTTP 201]
+$ curl -s -X POST -H 'Content-Type: application/json' -d '{"content":"Docker Compose chay that"}' -w ' [HTTP %{http_code}]' http://localhost:8085/notes
+{"id": 2, "content": "Docker Compose chay that"} [HTTP 201]
+$ curl -s http://localhost:8085/notes
+[{"id": 1, "content": "Ghi chu dau tien", "created_at": "2026-10-11 21:10:56.437244+00:00"}, {"id": 2, "content": "Docker Compose chay that", "created_at": "2026-10-11 21:10:56.720422+00:00"}]
+$ MSYS_NO_PATHCONV=1 docker compose exec database psql -U appuser -d appdb -c 'SELECT * FROM notes;'
+ id |         content          |          created_at           
+----+--------------------------+-------------------------------
+  1 | Ghi chu dau tien         | 2026-10-11 21:10:56.437244+00
+  2 | Docker Compose chay that | 2026-10-11 21:10:56.720422+00
+(2 rows)
+
+
+$ docker compose exec backend ping -c 2 database
+PING database (172.20.0.2): 56 data bytes
+64 bytes from 172.20.0.2: seq=0 ttl=64 time=0.076 ms
+64 bytes from 172.20.0.2: seq=1 ttl=64 time=0.181 ms
+
+--- database ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.076/0.128/0.181 ms
+
+$ docker compose logs --tail=6 backend
+backend-1  | Backend lang nghe tai 0.0.0.0:8080 (DB database:5432/appdb)
+backend-1  | [11/Oct/2026 21:10:56] 172.20.0.1 "GET /health HTTP/1.1" 200 -
+backend-1  | [11/Oct/2026 21:10:56] 172.20.0.1 "POST /notes HTTP/1.1" 201 -
+backend-1  | [11/Oct/2026 21:10:56] 172.20.0.1 "POST /notes HTTP/1.1" 201 -
+backend-1  | [11/Oct/2026 21:10:56] 172.20.0.1 "GET /notes HTTP/1.1" 200 -
+
+$ docker compose down
+ Container compose-stack-backend-1 Stopping 
+ Container compose-stack-backend-1 Stopped 
+ Container compose-stack-backend-1 Removing 
+ Container compose-stack-backend-1 Removed 
+ Container compose-stack-database-1 Stopping 
+ Container compose-stack-database-1 Stopped 
+ Container compose-stack-database-1 Removing 
+ Container compose-stack-database-1 Removed 
+ Network compose-stack_backend-net Removing 
+ Network compose-stack_backend-net Removed 
+
+$ docker compose ps
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS
+
+$ docker ps -a --filter name=compose-stack
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+$ docker network ls --filter name=compose-stack
+NETWORK ID   NAME      DRIVER    SCOPE
+
+$ docker volume ls --filter name=compose-stack
+DRIVER    VOLUME NAME
+local     compose-stack_pgdata
+
+$ docker compose up -d
+ Network compose-stack_backend-net Creating 
+ Network compose-stack_backend-net Creating 
+ Network compose-stack_backend-net Created 
+ Network compose-stack_backend-net Created 
+ Container compose-stack-database-1 Creating 
+ Container compose-stack-database-1 Created 
+ Container compose-stack-backend-1 Creating 
+ Container compose-stack-backend-1 Created 
+ Container compose-stack-database-1 Starting 
+ Container compose-stack-database-1 Started 
+ Container compose-stack-database-1 Waiting 
+ Container compose-stack-database-1 Healthy 
+ Container compose-stack-backend-1 Starting 
+ Container compose-stack-backend-1 Started 
+
+$ docker compose ps
+NAME                       IMAGE                   COMMAND                  SERVICE    CREATED         STATUS                   PORTS
+compose-stack-backend-1    compose-stack-backend   "python app.py"          backend    6 seconds ago   Up Less than a second    0.0.0.0:8085->8080/tcp, [::]:8085->8080/tcp
+compose-stack-database-1   postgres:15-alpine      "docker-entrypoint.s..."   database   6 seconds ago   Up 6 seconds (healthy)   5432/tcp
+
+$ curl -s http://localhost:8085/notes
+[{"id": 1, "content": "Ghi chu dau tien", "created_at": "2026-10-11 21:10:56.437244+00:00"}, {"id": 2, "content": "Docker Compose chay that", "created_at": "2026-10-11 21:10:56.720422+00:00"}]
+$ docker compose logs database | grep -n -E 'Skipping initialization|ready to accept'
+2:database-1  | PostgreSQL Database directory appears to contain a database; Skipping initialization
+9:database-1  | 2026-10-11 21:11:14.518 UTC [1] LOG:  database system is ready to accept connections
+
+--- thu loi thut le YAML
+$ docker compose -f bad.yml config
+go-yaml load error in parser (while parsing a block mapping) at L2.C3-L4.C4: did not find expected key
+
+$ docker compose down -v
+ Container compose-stack-backend-1 Stopping 
+ Container compose-stack-backend-1 Stopped 
+ Container compose-stack-backend-1 Removing 
+ Container compose-stack-backend-1 Removed 
+ Container compose-stack-database-1 Stopping 
+ Container compose-stack-database-1 Stopped 
+ Container compose-stack-database-1 Removing 
+ Container compose-stack-database-1 Removed 
+ Network compose-stack_backend-net Removing 
+ Volume compose-stack_pgdata Removing 
+ Volume compose-stack_pgdata Removed 
+ Network compose-stack_backend-net Removed 
+
+$ docker compose ps
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS
+
+$ docker volume ls --filter name=compose-stack
+DRIVER    VOLUME NAME
+
+$ docker network ls --filter name=compose-stack
+NETWORK ID   NAME      DRIVER    SCOPE
+
+$ docker image ls compose-stack-backend
+IMAGE                          ID             DISK USAGE   CONTENT SIZE   EXTRA
+compose-stack-backend:latest   ff5ad385f504       99.6MB         24.8MB        
+

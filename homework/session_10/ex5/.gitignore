@@ -1,0 +1,5 @@
+# Tệp biến môi trường thật chứa bí mật: không đưa lên Git
+.env
+
+# Tệp log
+*.log
